@@ -1,0 +1,9 @@
+main
+*.o
+*.out
+*.exe
+*.ptx
+*.cubin
+*.fatbin
+build/
+.cache/

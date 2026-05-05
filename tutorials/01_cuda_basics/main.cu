@@ -57,8 +57,10 @@ int main() {
                   h_A[i] + h_B[i]);
       break;
     }
-    std::printf("Match at index %d: %f + %f = %f\n", i, h_A[i], h_B[i], h_C[i]);
   }
+  std::printf("Sample: C[0] = %f + %f = %f\n", h_A[0], h_B[0], h_C[0]);
+  std::printf("Sample: C[%d] = %f + %f = %f\n", N - 1, h_A[N - 1],
+              h_B[N - 1], h_C[N - 1]);
   std::printf("Vector Addition Test: %s\n", correct ? "PASSED" : "FAILED");
 
   CHECK_CUDA(cudaFree(d_A));
