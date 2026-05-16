@@ -8,8 +8,8 @@ EXAMPLES := \
 	tutorials/04_thread_indexing/main \
 	tutorials/05_custom_kernel_workflow/main \
 	tutorials/06_shared_memory_and_sync/main \
-	tutorials/07_performance_first_steps/main \
-	tutorials/08_streams_and_next_steps/main
+	tutorials/07_streams_and_async_execution/main \
+	tutorials/08_inference_performance_analysis/main
 
 .PHONY: all clean run-01 run-02 run-03 run-04 run-05 run-06 run-07 run-08
 
@@ -36,11 +36,11 @@ run-05: tutorials/05_custom_kernel_workflow/main
 run-06: tutorials/06_shared_memory_and_sync/main
 	./tutorials/06_shared_memory_and_sync/main
 
-run-07: tutorials/07_performance_first_steps/main
-	./tutorials/07_performance_first_steps/main
+run-07: tutorials/07_streams_and_async_execution/main
+	./tutorials/07_streams_and_async_execution/main
 
-run-08: tutorials/08_streams_and_next_steps/main
-	./tutorials/08_streams_and_next_steps/main
+run-08: tutorials/08_inference_performance_analysis/main
+	./tutorials/08_inference_performance_analysis/main
 
 clean:
 	rm -f $(EXAMPLES)

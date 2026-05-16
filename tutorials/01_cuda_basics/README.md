@@ -22,6 +22,8 @@ CPU 负责准备数据、申请 GPU 内存、发起 kernel、取回结果；GPU 
 
 CUDA 编程模型默认 host 和 device 有各自的内存空间。普通 `malloc` 得到的是 host memory，`cudaMalloc` 得到的是 device memory。kernel 在 device 上运行，因此 kernel 访问的数据通常要先拷贝到 device memory。
 
+这个边界是 CUDA 入门最容易混淆的地方。host 指针和 device 指针在 C++ 类型上都可能写成 `float*`，但它们指向的地址空间不同。经验规则是：host 代码直接读写 host 指针，device kernel 直接读写 device 指针，host/device 之间移动数据要用 `cudaMemcpy` 或统一内存相关 API。
+
 ### Kernel
 
 kernel 是在 GPU 上由很多线程并行执行的函数。CUDA C++ 用 `__global__` 标记一个 kernel：
@@ -95,6 +97,22 @@ warp 是 GPU 硬件调度线程的基本单位。CUDA 线程在软件上看是�
 - 正确性层面：先把每个 CUDA thread 当成一个独立执行的“小工人”理解。
 - 性能层面：同一个 warp 里的线程最好做相同控制流、访问连续内存，否则会出现分支发散或低效访存。
 
+### Thread、Block、Grid 的职责边界
+
+- thread：最小执行单元，通常处理一个或几个元素。
+- block：线程协作单元，同一个 block 内线程可以使用 shared memory 和 `__syncthreads()`。
+- grid：一次 kernel launch 的全部工作集合，不同 block 之间默认没有全局同步。
+
+如果算法需要“所有线程完成阶段 A 后再进入阶段 B”，单个 kernel 里通常只能保证 block 内同步；跨 block 同步常见做法是拆成多个 kernel launch，或者使用 cooperative groups 等更高级机制。
+
+## 第一个性能直觉
+
+本章 vector add 每个元素只做一次加法，却要读两个 float、写一个 float，因此更容易受内存带宽限制，而不是算力限制。很多推理算子也类似：
+
+- elementwise add、mul、ReLU、sigmoid 通常是 memory-bound。
+- 矩阵乘、卷积通常更可能是 compute-bound 或 tensor-core-bound。
+- 性能优化前要先判断瓶颈，否则容易优化错方向。
+
 ## 本章代码
 
 文件：[main.cu](main.cu)
@@ -164,9 +182,14 @@ kernel launch 可能失败，kernel 执行过程中也可能失败。`cudaGetLas
 
 后续章节会讨论如何用计时和 occupancy 分析更合适的 block size。
 
+### launch 是异步提交
+
+`vectorAdd<<<...>>>()` 从 CPU 角度通常只是提交任务，GPU 可能还没执行完。代码里紧跟 `cudaDeviceSynchronize()` 是为了教学和调试：它让错误尽早出现，也让后续拷贝结果前确定 kernel 已完成。后面学习 stream 时，会进一步利用这种异步特性做流水线。
+
 ## 练习
 
 1. 把 `N` 改成 `1000`，观察 `blocksPerGrid` 和边界判断为什么仍然必要。
 2. 把 `threadsPerBlock` 改成 `128`、`512`，确认结果仍然正确。
 3. 删除 `if (i < N)` 后运行一个不能被 block size 整除的 `N`，观察程序是否报错或结果是否异常。
 4. 新增一个 `vectorSub` kernel，实现 `C[i] = A[i] - B[i]`。
+5. 打印实际启动线程数 `blocksPerGrid * threadsPerBlock`，比较它和 `N` 的差值。

@@ -47,6 +47,12 @@ int main() {
     CHECK_CUDA(cudaStreamCreate(&streams[s]));
   }
 
+  cudaEvent_t start;
+  cudaEvent_t stop;
+  CHECK_CUDA(cudaEventCreate(&start));
+  CHECK_CUDA(cudaEventCreate(&stop));
+  CHECK_CUDA(cudaEventRecord(start));
+
   int threads = 256;
   for (int s = 0; s < stream_count; ++s) {
     int offset = s * chunk;
@@ -68,7 +74,13 @@ int main() {
                                cudaMemcpyDeviceToHost, streams[s]));
   }
 
-  CHECK_CUDA(cudaDeviceSynchronize());
+  for (int s = 0; s < stream_count; ++s) {
+    CHECK_CUDA(cudaStreamSynchronize(streams[s]));
+  }
+  CHECK_CUDA(cudaEventRecord(stop));
+  CHECK_CUDA(cudaEventSynchronize(stop));
+  float pipeline_ms = 0.0f;
+  CHECK_CUDA(cudaEventElapsedTime(&pipeline_ms, start, stop));
 
   bool ok = true;
   for (int i = 0; i < n; ++i) {
@@ -80,14 +92,18 @@ int main() {
     }
   }
   std::printf("Streamed scale test: %s\n", ok ? "PASSED" : "FAILED");
+  std::printf("Streams=%d, chunk=%d, elapsed %.3f ms\n", stream_count, chunk,
+              pipeline_ms);
 
   for (int s = 0; s < stream_count; ++s) {
     CHECK_CUDA(cudaStreamDestroy(streams[s]));
   }
+  CHECK_CUDA(cudaEventDestroy(start));
+  CHECK_CUDA(cudaEventDestroy(stop));
   CHECK_CUDA(cudaFree(d_x));
   CHECK_CUDA(cudaFree(d_y));
   CHECK_CUDA(cudaFreeHost(h_x));
   CHECK_CUDA(cudaFreeHost(h_y));
-  std::printf("08_streams_and_next_steps completed.\n");
+  std::printf("07_streams_and_async_execution completed.\n");
   return 0;
 }

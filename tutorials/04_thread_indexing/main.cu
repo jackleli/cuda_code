@@ -51,6 +51,12 @@ int main() {
   dim3 block(16, 16);
   dim3 grid((width + block.x - 1) / block.x,
             (height + block.y - 1) / block.y);
+  int covered_width = grid.x * block.x;
+  int covered_height = grid.y * block.y;
+  std::printf("Logical matrix: %d x %d\n", width, height);
+  std::printf("Thread coverage: %d x %d, extra logical cells: %d\n",
+              covered_width, covered_height,
+              covered_width * covered_height - n);
   matrixAdd<<<grid, block>>>(d_a, d_b, d_c, width, height);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());

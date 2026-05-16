@@ -15,8 +15,8 @@
 - 使用 `cudaMalloc`、`cudaMemcpy`、`cudaFree` 管理 device memory。
 - 根据一维或二维数据写出正确的线程索引。
 - 编写、启动、检查一个自定义 `__global__` kernel。
-- 理解共享内存、同步、访存合并、分支发散这些性能入门概念。
-- 开始使用 CUDA events 和 streams 做计时与重叠执行。
+- 理解共享内存、同步、stream、异步拷贝和 CUDA events。
+- 开始用访存合并、occupancy、算术强度、FLOPs/MFU 等指标分析推理性能。
 
 ## 目录
 
@@ -28,8 +28,8 @@ tutorials/
   04_thread_indexing/               一维/二维索引、边界保护、矩阵加法
   05_custom_kernel_workflow/         从 CPU 标量公式改写为自定义 kernel
   06_shared_memory_and_sync/         shared memory、__syncthreads、块内归约
-  07_performance_first_steps/        CUDA event 计时、访存合并、occupancy 入门
-  08_streams_and_next_steps/         streams、异步拷贝、后续学习路线
+  07_streams_and_async_execution/    streams、异步拷贝、pinned memory、events
+  08_inference_performance_analysis/ CUDA 性能分析、访存合并、推理指标与优化路线
 ```
 
 建议按顺序学习。每章 README 都包含概念、代码阅读重点、编译运行方式和练习。

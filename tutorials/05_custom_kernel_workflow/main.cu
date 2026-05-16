@@ -14,12 +14,18 @@
     }                                                                 \
   } while (0)
 
-__global__ void fusedSigmoidKernel(float a, float b, const float* x,
-                                   const float* y, float* z, int n) {
+__device__ __forceinline__ float sigmoidDevice(float t) {
+  return 1.0f / (1.0f + expf(-t));
+}
+
+__global__ void fusedSigmoidKernel(float a, float b,
+                                   const float* __restrict__ x,
+                                   const float* __restrict__ y,
+                                   float* __restrict__ z, int n) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) {
     float t = a * x[i] + b * y[i];
-    z[i] = 1.0f / (1.0f + expf(-t));
+    z[i] = sigmoidDevice(t);
   }
 }
 
@@ -59,6 +65,8 @@ int main() {
 
   int threads = 256;
   int blocks = (n + threads - 1) / threads;
+  std::printf("Fused sigmoid launch: blocks=%d threads=%d\n", blocks,
+              threads);
   fusedSigmoidKernel<<<blocks, threads>>>(a, b, d_x, d_y, d_z, n);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());

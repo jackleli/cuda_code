@@ -19,6 +19,8 @@ shared memory 是很多高性能 CUDA kernel 的核心工具。它常用于：
 - 减少 global memory 访问次数。
 - 改善访存模式。
 
+shared memory 不是“自动更快”的替代品。只有当数据会被复用、需要线程协作，或能改善 global memory 访问模式时，它才值得引入。否则多一次 shared memory 读写和同步反而可能变慢。
+
 ## `__shared__`
 
 静态 shared memory：
@@ -56,6 +58,25 @@ if (threadIdx.x == 0) {
 
 只有 thread 0 到达屏障，其他线程没有到达，程序会挂住。
 
+安全写法是让所有线程都执行到同步点，把条件放在同步点内部工作之外：
+
+```cpp
+if (tid < active) {
+  shared[tid] = value;
+} else {
+  shared[tid] = 0.0f;
+}
+__syncthreads();
+```
+
+### Bank Conflict
+
+shared memory 被分成多个 bank。同一个 warp 内如果多个线程访问落在同一个 bank 的不同地址，就可能串行化，称为 bank conflict。入门阶段先记住：
+
+- 连续线程访问连续 `float` 通常比较友好。
+- 二维 tile 有时需要 padding，例如 `tile[32][33]`，避免转置访问时冲突。
+- Nsight Compute 可以观察 shared memory bank conflict 指标。
+
 ## 归约
 
 归约是把很多输入合并成一个输出，例如求和、最大值、最小值。
@@ -76,6 +97,20 @@ GPU 不能简单让所有线程同时写同一个 `sum`，因为会发生 data r
 3. host 或第二个 kernel 再把 partial sums 合并。
 
 本章示例使用第一种分解方式，并在 host 上合并 partial sums。
+
+### 为什么浮点误差会不同
+
+浮点加法不满足严格结合律。CPU 顺序求和是：
+
+```text
+(((x0 + x1) + x2) + ...)
+```
+
+GPU 块内二分归约是树形顺序。两者加法顺序不同，末尾舍入误差也可能不同。因此校验归约时通常看绝对误差或相对误差，而不是要求 bitwise 一致。
+
+### Warp-level 原语
+
+更高性能的归约通常会减少 shared memory 和 `__syncthreads()`，在 warp 内使用 `__shfl_down_sync` 等 shuffle 指令。它能让同一个 warp 内线程直接交换寄存器数据。这个主题适合在理解 shared memory 归约后继续学习。
 
 ## 本章代码
 
@@ -101,3 +136,4 @@ make run-06
 2. 把求和改成求最大值。
 3. 尝试让每个线程处理两个元素，减少 block 数。
 4. 思考为什么浮点求和的 GPU 结果和 CPU 顺序求和可能存在微小差异。
+5. 用 Nsight Compute 查看 shared memory load/store 和 occupancy。

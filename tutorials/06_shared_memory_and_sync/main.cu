@@ -20,8 +20,15 @@ __global__ void blockReduceSum(const float* x, float* partial, int n) {
   __shared__ float shared[kBlockSize];
 
   int tid = threadIdx.x;
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  shared[tid] = (i < n) ? x[i] : 0.0f;
+  int i = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+  float thread_sum = 0.0f;
+  if (i < n) {
+    thread_sum += x[i];
+  }
+  if (i + blockDim.x < n) {
+    thread_sum += x[i + blockDim.x];
+  }
+  shared[tid] = thread_sum;
   __syncthreads();
 
   for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
@@ -49,8 +56,10 @@ int main() {
     cpu_sum += v;
   }
 
-  int blocks = (n + kBlockSize - 1) / kBlockSize;
+  int blocks = (n + kBlockSize * 2 - 1) / (kBlockSize * 2);
   std::vector<float> h_partial(blocks);
+  std::printf("Reduction blocks=%d, block size=%d, elements/thread up to 2\n",
+              blocks, kBlockSize);
 
   float* d_x = nullptr;
   float* d_partial = nullptr;

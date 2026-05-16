@@ -30,39 +30,43 @@ __global__ void copyStrided(const float* x, float* y, int n, int stride) {
 }
 
 float timeKernelCoalesced(const float* d_x, float* d_y, int n, int blocks,
-                          int threads) {
+                          int threads, int repeats) {
   cudaEvent_t start;
   cudaEvent_t stop;
   CHECK_CUDA(cudaEventCreate(&start));
   CHECK_CUDA(cudaEventCreate(&stop));
   CHECK_CUDA(cudaEventRecord(start));
-  copyCoalesced<<<blocks, threads>>>(d_x, d_y, n);
-  CHECK_CUDA(cudaGetLastError());
+  for (int r = 0; r < repeats; ++r) {
+    copyCoalesced<<<blocks, threads>>>(d_x, d_y, n);
+    CHECK_CUDA(cudaGetLastError());
+  }
   CHECK_CUDA(cudaEventRecord(stop));
   CHECK_CUDA(cudaEventSynchronize(stop));
   float ms = 0.0f;
   CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
   CHECK_CUDA(cudaEventDestroy(start));
   CHECK_CUDA(cudaEventDestroy(stop));
-  return ms;
+  return ms / repeats;
 }
 
 float timeKernelStrided(const float* d_x, float* d_y, int n, int blocks,
-                        int threads, int stride) {
+                        int threads, int stride, int repeats) {
   cudaEvent_t start;
   cudaEvent_t stop;
   CHECK_CUDA(cudaEventCreate(&start));
   CHECK_CUDA(cudaEventCreate(&stop));
   CHECK_CUDA(cudaEventRecord(start));
-  copyStrided<<<blocks, threads>>>(d_x, d_y, n, stride);
-  CHECK_CUDA(cudaGetLastError());
+  for (int r = 0; r < repeats; ++r) {
+    copyStrided<<<blocks, threads>>>(d_x, d_y, n, stride);
+    CHECK_CUDA(cudaGetLastError());
+  }
   CHECK_CUDA(cudaEventRecord(stop));
   CHECK_CUDA(cudaEventSynchronize(stop));
   float ms = 0.0f;
   CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
   CHECK_CUDA(cudaEventDestroy(start));
   CHECK_CUDA(cudaEventDestroy(stop));
-  return ms;
+  return ms / repeats;
 }
 
 int main() {
@@ -83,15 +87,19 @@ int main() {
 
   int threads = 256;
   int blocks = (n + threads - 1) / threads;
+  constexpr int repeats = 20;
 
   copyCoalesced<<<blocks, threads>>>(d_x, d_y, n);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 
-  float coalesced_ms = timeKernelCoalesced(d_x, d_y, n, blocks, threads);
-  float strided_ms = timeKernelStrided(d_x, d_y, n, blocks, threads, stride);
+  float coalesced_ms =
+      timeKernelCoalesced(d_x, d_y, n, blocks, threads, repeats);
+  float strided_ms =
+      timeKernelStrided(d_x, d_y, n, blocks, threads, stride, repeats);
 
   double gib = static_cast<double>(bytes * 2) / 1024.0 / 1024.0 / 1024.0;
+  std::printf("Averaged over %d launches, stride=%d\n", repeats, stride);
   std::printf("Coalesced copy: %.3f ms, approx %.2f GiB/s\n", coalesced_ms,
               gib / (coalesced_ms / 1000.0));
   std::printf("Strided copy:   %.3f ms, approx %.2f GiB/s\n", strided_ms,
@@ -99,6 +107,6 @@ int main() {
 
   CHECK_CUDA(cudaFree(d_x));
   CHECK_CUDA(cudaFree(d_y));
-  std::printf("07_performance_first_steps completed.\n");
+  std::printf("08_inference_performance_analysis completed.\n");
   return 0;
 }

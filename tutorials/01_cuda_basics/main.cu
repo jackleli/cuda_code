@@ -43,6 +43,10 @@ int main() {
 
   constexpr int threadsPerBlock = 256;
   constexpr int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+  constexpr int launchedThreads = blocksPerGrid * threadsPerBlock;
+  std::printf("N=%d, blocks=%d, threads/block=%d, launched threads=%d\n", N,
+              blocksPerGrid, threadsPerBlock, launchedThreads);
+  std::printf("Extra boundary-guarded threads: %d\n", launchedThreads - N);
 
   vectorAdd<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, N);
   CHECK_CUDA(cudaGetLastError());

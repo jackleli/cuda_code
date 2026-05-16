@@ -80,6 +80,29 @@ CHECK_CUDA(cudaDeviceSynchronize());
 
 然后把结果拷回 host，与 CPU reference 比较。
 
+### `__device__` helper
+
+当 kernel 内有可复用的小函数时，可以写成 `__device__`：
+
+```cpp
+__device__ float sigmoidDevice(float x) {
+  return 1.0f / (1.0f + expf(-x));
+}
+```
+
+这能让 kernel 主体更清晰。简单函数通常会被编译器内联；必要时可以使用 `__forceinline__`，但入门阶段不需要急着加。
+
+### 指针别名和 `__restrict__`
+
+如果编译器知道输入输出指针不会指向同一块内存，可以更大胆地优化。CUDA C++ 中常见写法：
+
+```cpp
+__global__ void kernel(const float* __restrict__ x,
+                       float* __restrict__ y, int n)
+```
+
+`__restrict__` 是一种承诺：这些指针不会互相别名。承诺错误会导致未定义行为，所以只在确实确定时使用。
+
 ## 思维转换
 
 写 CUDA kernel 时，最重要的转变是从“一个循环处理所有元素”变成“每个线程只处理自己负责的元素”。
@@ -114,6 +137,15 @@ if (i < n) {
 
 这些问题仍然能用 CUDA 做，但会涉及 shared memory、同步、分块、warp 原语或库函数。
 
+## 融合算子思想
+
+本章公式把线性组合和 sigmoid 放在一个 kernel 中完成。如果拆成多个 kernel：
+
+1. `tmp[i] = a * x[i] + b * y[i]`
+2. `z[i] = sigmoid(tmp[i])`
+
+就会多一次中间结果的 global memory 写入和读取，还会多一次 kernel launch overhead。推理优化中常见的 elementwise fusion、activation fusion，本质上就是减少中间张量读写和 launch 次数。
+
 ## 本章代码
 
 文件：[main.cu](main.cu)
@@ -143,3 +175,4 @@ make run-05
 2. 新增一个 ReLU kernel：`z[i] = max(0, x[i])`。
 3. 把 `threads` 改成 `128`、`512`，确认正确性不变。
 4. 把 CPU reference 故意写错，观察校验是否能抓到。
+5. 把 sigmoid 计算提取成 `__device__` 函数，并观察结果是否一致。

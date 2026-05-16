@@ -23,6 +23,8 @@ int main() {
     return 0;
   }
 
+  std::printf("CUDA device count: %d\n", device_count);
+
   for (int device = 0; device < device_count; ++device) {
     cudaDeviceProp prop{};
     CHECK_CUDA(cudaGetDeviceProperties(&prop, device));
@@ -41,6 +43,18 @@ int main() {
                 prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
     std::printf("  Max grid size: (%d, %d, %d)\n", prop.maxGridSize[0],
                 prop.maxGridSize[1], prop.maxGridSize[2]);
+    std::printf("  Managed memory: %d\n", prop.managedMemory);
+    std::printf("  Concurrent managed access: %d\n",
+                prop.concurrentManagedAccess);
+    std::printf("  Async engine count: %d\n", prop.asyncEngineCount);
+    std::printf("  Memory clock rate: %.2f GHz\n",
+                prop.memoryClockRate / 1000000.0);
+    std::printf("  Memory bus width: %d bits\n", prop.memoryBusWidth);
+    double theoretical_bandwidth_gbs =
+        2.0 * prop.memoryClockRate * 1000.0 * (prop.memoryBusWidth / 8.0) /
+        1.0e9;
+    std::printf("  Approx theoretical memory bandwidth: %.2f GB/s\n",
+                theoretical_bandwidth_gbs);
   }
 
   CHECK_CUDA(cudaSetDevice(0));

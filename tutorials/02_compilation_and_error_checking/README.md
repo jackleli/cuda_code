@@ -24,8 +24,20 @@ nvcc -std=c++17 -O2 main.cu -o main
 - `-g -G`：调试 device code 时使用。`-G` 会关闭很多 device 优化，不适合性能测试。
 - `-lineinfo`：保留行号信息，便于 Nsight Compute、cuda-gdb 或 profiler 映射源码。
 - `-arch=sm_80`：为指定 compute capability 生成代码。实际值要根据 GPU 选择。
+- `-Xptxas=-v`：打印 ptxas 编译信息，例如寄存器和 shared memory 使用量。
+- `--use_fast_math`：启用更快但精度语义不同的数学实现，推理优化中要谨慎验证误差。
 
 入门阶段可以先不手写 `-arch`，让 `nvcc` 使用默认值。需要性能分析或发布程序时，再明确指定目标架构。
+
+### Compute Capability 和 `-arch`
+
+Compute capability 描述 GPU 支持的硬件特性，例如 warp-level 指令、tensor cores、异步拷贝、shared memory 上限等。常见写法：
+
+```bash
+nvcc -std=c++17 -O2 -arch=sm_86 main.cu -o main
+```
+
+`sm_86` 表示生成面向实际 GPU 架构的 SASS 机器码。做 TensorRT plugin 或自定义 CUDA 算子时，编译架构如果选错，可能出现不能运行、无法使用新硬件特性，或性能偏低。
 
 ## CUDA Runtime API
 
@@ -105,6 +117,37 @@ CHECK_CUDA(cudaDeviceSynchronize());
 
 这些属性会影响 kernel 的 launch 配置和性能上限。
 
+额外值得关注：
+
+- `managedMemory`：是否支持 unified managed memory。
+- `concurrentManagedAccess`：host/device 是否能更好地并发访问 managed memory。
+- `asyncEngineCount`：异步拷贝引擎数量，影响 H2D/D2H 与 kernel 重叠能力。
+- `memoryBusWidth`、`memoryClockRate`：可粗略估计显存理论带宽。
+- `major/minor`：决定是否能使用 tensor cores、`cp.async` 等特性。
+
+### `concurrentManagedAccess` 和 prefetch
+
+`managedMemory=1` 只说明设备支持 unified managed memory，不等于所有 managed memory 优化 API 都可用。`concurrentManagedAccess=0` 时，不要在教学代码里默认调用 `cudaMemPrefetchAsync`；某些设备或驱动组合会返回 `cudaErrorInvalidDevice` / `invalid device ordinal`。更稳妥的写法是先查询属性：
+
+```cpp
+cudaDeviceProp prop{};
+cudaGetDeviceProperties(&prop, device);
+if (prop.concurrentManagedAccess) {
+  cudaMemPrefetchAsync(ptr, bytes, device);
+}
+```
+
+不支持 prefetch 时，managed memory 仍然可以用，但迁移由 runtime 按需处理，性能和可预测性会差一些。真正做推理优化时，通常更偏向显式 `cudaMalloc`、`cudaMemcpyAsync`、pinned memory 和 stream，而不是依赖隐式迁移。
+
+## 调试工具入口
+
+- `compute-sanitizer --tool memcheck ./main`：检查越界、非法访问等内存问题。
+- `cuda-gdb ./main`：调试 host/device 代码。
+- Nsight Systems：看 CPU、GPU、Memcpy、Kernel 的时间线。
+- Nsight Compute：看单个 kernel 的访存、occupancy、指令、吞吐瓶颈。
+
+教学代码里频繁 `cudaDeviceSynchronize()` 是为了定位错误；性能测试时要减少不必要同步，用 events 或 profiler 观察真实执行。
+
 ## 本章代码
 
 文件：[main.cu](main.cu)
@@ -133,3 +176,5 @@ nvcc -std=c++17 -O2 main.cu -o main
 1. 打印更多 `cudaDeviceProp` 字段，例如 `clockRate`、`memoryClockRate`。
 2. 把 `threadsPerBlock` 改成一个大于 `maxThreadsPerBlock` 的值，观察 `cudaGetLastError` 报什么。
 3. 在代码开头调用 `cudaSetDevice(0)` 并检查返回值。
+4. 用 `nvcc -Xptxas=-v` 编译，观察空 kernel 使用的寄存器信息。
+5. 用 `compute-sanitizer` 运行本章程序，熟悉工具输出格式。

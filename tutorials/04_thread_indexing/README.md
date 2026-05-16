@@ -46,6 +46,17 @@ if (row < height && col < width) {
 
 `x` 维通常对应列，`y` 维通常对应行。线性下标 `row * width + col` 适用于 C/C++ 的 row-major 数组。
 
+### Row-major 和访存合并
+
+C/C++ 的二维数组通常按行连续存储：
+
+```text
+row 0: col 0, col 1, col 2, ...
+row 1: col 0, col 1, col 2, ...
+```
+
+因此让 `threadIdx.x` 对应连续的 `col` 往往更友好。同一个 warp 内相邻线程如果访问 `idx`、`idx + 1`、`idx + 2`，global memory 更容易合并访问。若把 x/y 映射反了，可能每个相邻线程跨一整行访问，性能会明显变差。
+
 ## 为什么要边界保护
 
 当矩阵宽高不能被 block 维度整除时，grid 向上取整后会产生额外线程。例如宽度是 1000、block.x 是 16，则 x 方向需要 63 个 block，共 1008 列线程，最后 8 列线程不对应真实数据。
@@ -64,6 +75,20 @@ if (row < height && col < width) {
 - 让相邻线程访问相邻内存，方便后续实现 coalesced access。
 - block 维度优先选 32 的倍数或由 warp 友好的组合构成，例如 `256`、`16x16`、`32x8`。
 - 正确性优先于性能，所有越界风险先用边界判断处理。
+
+## Grid-stride Loop
+
+除了“一个线程处理一个元素”，CUDA 代码里还常见 grid-stride loop：
+
+```cpp
+for (int i = blockIdx.x * blockDim.x + threadIdx.x;
+     i < n;
+     i += blockDim.x * gridDim.x) {
+  out[i] = in[i] * 2.0f;
+}
+```
+
+它的好处是 kernel 可以在固定 grid 大小下处理任意长度输入，也便于让每个线程处理多个元素。很多通用 elementwise kernel 会用这种写法。
 
 ## 本章代码
 
@@ -88,3 +113,5 @@ make run-04
 1. 把 block 改成 `dim3(32, 8)`，确认结果仍然正确。
 2. 把矩阵宽高改成 `1024 x 1024`，比较运行时间。
 3. 新增一个矩阵缩放 kernel：`B[row, col] = alpha * A[row, col]`。
+4. 把索引改错成 `idx = col * height + row`，观察校验如何失败。
+5. 打印 grid 覆盖的逻辑宽高，计算多出来多少边界线程。

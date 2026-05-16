@@ -75,11 +75,28 @@ void saxpyUnifiedMemory(int n, float a) {
     y[i] = 1.0f;
   }
 
+  int device = 0;
+  CHECK_CUDA(cudaGetDevice(&device));
+  cudaDeviceProp prop{};
+  CHECK_CUDA(cudaGetDeviceProperties(&prop, device));
+  bool can_prefetch = prop.concurrentManagedAccess != 0;
+  if (can_prefetch) {
+    CHECK_CUDA(cudaMemPrefetchAsync(x, bytes, device));
+    CHECK_CUDA(cudaMemPrefetchAsync(y, bytes, device));
+  } else {
+    std::printf("Unified memory prefetch skipped: "
+                "concurrentManagedAccess=0 on this device.\n");
+  }
+
   int threads = 256;
   int blocks = (n + threads - 1) / threads;
   saxpy<<<blocks, threads>>>(a, x, y, n);
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
+  if (can_prefetch) {
+    CHECK_CUDA(cudaMemPrefetchAsync(y, bytes, cudaCpuDeviceId));
+    CHECK_CUDA(cudaDeviceSynchronize());
+  }
 
   bool ok = true;
   for (int i = 0; i < n; ++i) {
@@ -98,6 +115,9 @@ void saxpyUnifiedMemory(int n, float a) {
 int main() {
   constexpr int n = 1 << 20;
   constexpr float a = 2.0f;
+  double traffic_mib = static_cast<double>(n) * sizeof(float) * 3.0 / 1024.0 /
+                       1024.0;
+  std::printf("SAXPY minimum global-memory traffic: %.2f MiB\n", traffic_mib);
   saxpyExplicitMemory(n, a);
   saxpyUnifiedMemory(n, a);
   std::printf("03_memory_management completed.\n");

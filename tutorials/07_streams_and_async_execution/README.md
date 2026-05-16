@@ -1,6 +1,6 @@
-# 08 Streams And Next Steps
+# 07 Streams And Async Execution
 
-本章目标：认识 CUDA 的异步执行模型、stream、异步拷贝和 events，并给出后续学习路线。
+本章目标：认识 CUDA 的异步执行模型、stream、异步拷贝、pinned memory 和 events，为后续性能分析打基础。
 
 ## 默认异步模型
 
@@ -10,13 +10,19 @@
 - `cudaMemcpyAsync` 会把拷贝任务提交到 stream。
 - 不同 stream 中的任务在条件满足时可能并发执行。
 
-这也是为什么调试阶段经常使用：
+调试阶段经常使用：
 
 ```cpp
 CHECK_CUDA(cudaDeviceSynchronize());
 ```
 
-它会等待当前 device 上前面提交的工作完成。
+它会等待当前 device 上前面提交的工作完成。更细粒度的同步包括：
+
+- `cudaStreamSynchronize(stream)`：只等待某个 stream。
+- `cudaEventSynchronize(event)`：等待某个 event 之前的工作。
+- `cudaDeviceSynchronize()`：等待当前 device 上已提交工作，范围最大。
+
+性能代码中应尽量使用更小同步范围，否则会破坏流水线。
 
 ## Stream
 
@@ -43,6 +49,8 @@ cudaStreamDestroy(stream);
 kernel<<<grid, block, shared_bytes, stream>>>(...);
 cudaMemcpyAsync(dst, src, bytes, cudaMemcpyHostToDevice, stream);
 ```
+
+现代 CUDA 中还要注意默认 stream 语义。legacy default stream 可能和其他 stream 有隐式同步；per-thread default stream 则更利于并发。工程里应明确团队编译选项和 stream 使用约定，避免隐式同步导致性能异常。
 
 ## Page-locked Host Memory
 
@@ -73,6 +81,10 @@ cudaStreamWaitEvent(stream_b, event);
 
 这表示 `stream_b` 后续任务要等 `stream_a` 记录 event 之前的任务完成。
 
+## CUDA Graphs
+
+当程序反复执行固定形状的同一串 CUDA 操作时，kernel launch overhead 可能变得明显。CUDA Graphs 可以把一串操作捕获成图，再反复 replay，减少 CPU 提交开销。这里先知道它解决的是“重复提交开销”问题，具体优化评估放到第 08 章。
+
 ## 本章代码
 
 文件：[main.cu](main.cu)
@@ -83,27 +95,14 @@ cudaStreamWaitEvent(stream_b, event);
 2. `cudaMemcpyAsync` 把 chunk 拷到 device。
 3. kernel 处理该 chunk。
 4. `cudaMemcpyAsync` 把 chunk 结果拷回 host。
-5. `cudaDeviceSynchronize` 等待所有 stream 完成。
+5. `cudaStreamSynchronize` 逐个等待 stream 完成，并用 event 记录流水线耗时。
 
 这个例子重点是 stream API 的形状。是否能看到明显重叠取决于 GPU 是否支持 copy/execute overlap、数据规模、PCIe 带宽和运行环境。
-
-## 后续学习路线
-
-学完前 8 章后，可以继续补这些主题：
-
-- 更完整的归约：多阶段 device 端归约、warp-level primitives。
-- 矩阵乘法：tiling、shared memory、bank conflict。
-- 原子操作：`atomicAdd`、计数、直方图。
-- 线程束级编程：shuffle、vote、cooperative groups。
-- CUDA Graphs：降低重复 launch overhead。
-- 多 GPU：device selection、peer access、NCCL。
-- 性能工具：Nsight Systems、Nsight Compute、compute-sanitizer。
-- 库优先思路：cuBLAS、cuDNN、cuFFT、Thrust、CUB。
 
 ## 编译运行
 
 ```bash
-make run-08
+make run-07
 ```
 
 ## 练习
@@ -111,4 +110,5 @@ make run-08
 1. 把 stream 数量改成 1、2、4、8，观察耗时。
 2. 把 chunk 大小调大或调小，观察耗时。
 3. 把 pinned memory 改成 `std::vector<float>`，比较行为和性能。
-4. 用 `cudaEventRecord` 给整个流水线计时。
+4. 用 `cudaEventRecord` 分别给 HtoD、kernel、DtoH 计时。
+5. 把逐个 `cudaStreamSynchronize` 改成 `cudaDeviceSynchronize`，观察语义差异。
